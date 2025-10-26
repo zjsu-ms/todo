@@ -1,14 +1,25 @@
 package com.zjgsu.todo.model;
 
+import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 /**
  * 用户实体类
  */
+@Entity
+@Table(name = "users")
 public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, unique = true, length = 50)
     private String username;
+
+    @Column(nullable = false, unique = true, length = 100)
     private String email;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     public User() {
@@ -20,6 +31,11 @@ public class User {
         this.username = username;
         this.email = email;
         this.createdAt = LocalDateTime.now();
+    }
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
     }
 
     // Getters and Setters

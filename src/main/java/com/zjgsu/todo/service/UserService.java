@@ -2,75 +2,92 @@ package com.zjgsu.todo.service;
 
 import com.zjgsu.todo.exception.ResourceNotFoundException;
 import com.zjgsu.todo.model.User;
+import com.zjgsu.todo.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 用户服务层
- * 使用内存存储，演示RESTful API
+ * 使用数据库存储
  */
 @Service
 public class UserService {
-    // 使用内存存储
-    private final Map<Long, User> users = new ConcurrentHashMap<>();
-    private final AtomicLong idCounter = new AtomicLong(1);
+    private final UserRepository userRepository;
 
-    public UserService() {
-        // 初始化一些测试数据
-        createUser(new User(null, "张三", "zhangsan@example.com"));
-        createUser(new User(null, "李四", "lisi@example.com"));
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    /**
+     * 初始化测试数据
+     */
+    @PostConstruct
+    public void init() {
+        // 只在数据库为空时初始化测试数据
+        if (userRepository.count() == 0) {
+            createUser(new User(null, "张三", "zhangsan@example.com"));
+            createUser(new User(null, "李四", "lisi@example.com"));
+        }
     }
 
     /**
      * 获取所有用户
      */
     public List<User> findAll() {
-        return new ArrayList<>(users.values());
+        return userRepository.findAll();
     }
 
     /**
      * 根据ID查找用户
      */
     public Optional<User> findById(Long id) {
-        return Optional.ofNullable(users.get(id));
+        return userRepository.findById(id);
     }
 
     /**
      * 创建用户
      */
+    @Transactional
     public User createUser(User user) {
-        Long id = idCounter.getAndIncrement();
-        user.setId(id);
-        users.put(id, user);
-        return user;
+        // 检查用户名是否已存在
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new IllegalArgumentException("用户名已存在: " + user.getUsername());
+        }
+        // 检查邮箱是否已存在
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new IllegalArgumentException("邮箱已存在: " + user.getEmail());
+        }
+        return userRepository.save(user);
     }
 
     /**
      * 更新用户
      */
+    @Transactional
     public User updateUser(Long id, User user) {
-        if (!users.containsKey(id)) {
-            throw new ResourceNotFoundException("User", id);
-        }
-        user.setId(id);
-        users.put(id, user);
-        return user;
+        User existingUser = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+
+        // 更新字段
+        existingUser.setUsername(user.getUsername());
+        existingUser.setEmail(user.getEmail());
+
+        return userRepository.save(existingUser);
     }
 
     /**
      * 删除用户
      */
+    @Transactional
     public boolean deleteUser(Long id) {
-        if (!users.containsKey(id)) {
+        if (!userRepository.existsById(id)) {
             throw new ResourceNotFoundException("User", id);
         }
-        users.remove(id);
+        userRepository.deleteById(id);
         return true;
     }
 
@@ -78,6 +95,6 @@ public class UserService {
      * 检查用户是否存在
      */
     public boolean existsById(Long id) {
-        return users.containsKey(id);
+        return userRepository.existsById(id);
     }
 }

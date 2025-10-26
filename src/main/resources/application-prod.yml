@@ -1,0 +1,23 @@
+spring:
+  # 生产环境数据源配置（使用环境变量）
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 生产环境只验证表结构
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+# 日志配置
+logging:
+  level:
+    com.zjgsu.todo: INFO
+    org.springframework.web: WARN

@@ -7,6 +7,11 @@
 - [项目说明](#项目说明)
 - [技术栈](#技术栈)
 - [环境准备](#环境准备)
+- [数据库配置](#数据库配置)
+  - [开发环境（H2内存数据库）](#开发环境h2内存数据库)
+  - [生产环境（MySQL数据库）](#生产环境mysql数据库)
+  - [数据库配置参数说明](#数据库配置参数说明)
+  - [常见数据库问题](#常见数据库问题)
 - [从零开始构建项目](#从零开始构建项目)
   - [第一步：创建Spring Boot项目](#第一步创建spring-boot项目)
   - [第二步：在IntelliJ IDEA中打开项目](#第二步在intellij-idea中打开项目)
@@ -15,11 +20,12 @@
   - [第五步：创建Service层](#第五步创建service层)
   - [第六步：创建Controller层](#第六步创建controller层)
   - [第七步：创建全局异常处理](#第七步创建全局异常处理)
-  - [第八步：配置应用](#第八步配置应用)
+  - [第八步：配置数据库](#第八步配置数据库)
   - [第九步：运行项目](#第九步运行项目)
   - [第十步：测试API](#第十步测试api)
 - [完整API文档](#完整api文档)
 - [学习要点](#学习要点)
+- [项目扩展建议](#项目扩展建议)
 
 ---
 
@@ -32,6 +38,9 @@
 - ✅ 正确使用HTTP状态码
 - ✅ 资源嵌套关系
 - ✅ 全局异常处理
+- ✅ JPA/Hibernate数据持久化
+- ✅ MySQL数据库集成
+- ✅ 多环境配置（开发/生产）
 
 ## 技术栈
 
@@ -39,6 +48,8 @@
 - **Java** 25（或Java 17+）
 - **Maven** 3.8+
 - **IntelliJ IDEA** 2024+（推荐使用Community或Ultimate版本）
+- **MySQL** 8.0+ (生产环境)
+- **H2 Database** (开发环境)
 
 ## 环境准备
 
@@ -143,9 +154,19 @@ todo/
 │   ├── main/
 │   │   ├── java/
 │   │   │   └── com/zjgsu/todo/
-│   │   │       └── TodoApplication.java
+│   │   │       ├── TodoApplication.java
+│   │   │       ├── common/          # 通用类
+│   │   │       ├── controller/       # 控制器层
+│   │   │       ├── exception/        # 异常处理
+│   │   │       ├── model/            # 实体类
+│   │   │       ├── repository/       # 数据访问层
+│   │   │       └── service/          # 业务逻辑层
 │   │   └── resources/
-│   │       └── application.properties
+│   │       ├── application.yml       # 主配置文件
+│   │       ├── application-dev.yml   # 开发环境配置
+│   │       ├── application-prod.yml  # 生产环境配置
+│   │       └── db/
+│   │           └── init.sql          # 数据库初始化脚本
 │   └── test/
 │       └── java/
 │           └── com/zjgsu/todo/
@@ -469,7 +490,11 @@ public class ResourceNotFoundException extends RuntimeException {
 
 ### 第五步：创建Service层
 
-Service层包含业务逻辑。为了简化演示，我们使用内存存储数据。
+Service层包含业务逻辑。
+
+::: {.callout-note}
+**注意**：本步骤先使用内存存储演示基本功能，后续会在[第八步](#第八步配置数据库)升级为数据库存储。
+:::
 
 #### 5.1 创建 `service` 包
 
@@ -477,7 +502,7 @@ Service层包含业务逻辑。为了简化演示，我们使用内存存储数�
 
 #### 5.2 创建UserService
 
-在 `service` 包中创建 `UserService.java`：
+在 `service` 包中创建 `UserService.java`（使用内存存储的简化版本）：
 
 ```java
 package com.zjgsu.todo.service;
@@ -493,39 +518,25 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * 用户服务层
- * 使用内存存储，演示RESTful API
- */
 @Service
 public class UserService {
-    // 使用内存存储
     private final Map<Long, User> users = new ConcurrentHashMap<>();
     private final AtomicLong idCounter = new AtomicLong(1);
 
     public UserService() {
-        // 初始化一些测试数据
+        // 初始化测试数据
         createUser(new User(null, "张三", "zhangsan@example.com"));
         createUser(new User(null, "李四", "lisi@example.com"));
     }
 
-    /**
-     * 获取所有用户
-     */
     public List<User> findAll() {
         return new ArrayList<>(users.values());
     }
 
-    /**
-     * 根据ID查找用户
-     */
     public Optional<User> findById(Long id) {
         return Optional.ofNullable(users.get(id));
     }
 
-    /**
-     * 创建用户
-     */
     public User createUser(User user) {
         Long id = idCounter.getAndIncrement();
         user.setId(id);
@@ -533,9 +544,6 @@ public class UserService {
         return user;
     }
 
-    /**
-     * 更新用户
-     */
     public User updateUser(Long id, User user) {
         if (!users.containsKey(id)) {
             throw new ResourceNotFoundException("User", id);
@@ -545,9 +553,6 @@ public class UserService {
         return user;
     }
 
-    /**
-     * 删除用户
-     */
     public boolean deleteUser(Long id) {
         if (!users.containsKey(id)) {
             throw new ResourceNotFoundException("User", id);
@@ -556,24 +561,15 @@ public class UserService {
         return true;
     }
 
-    /**
-     * 检查用户是否存在
-     */
     public boolean existsById(Long id) {
         return users.containsKey(id);
     }
 }
 ```
 
-**📝 代码说明**：
-- `@Service` 注解标记这是一个服务类，Spring会自动管理
-- `ConcurrentHashMap` 用于线程安全的内存存储
-- `AtomicLong` 用于生成唯一ID
-- 构造函数中初始化了两个测试用户
-
 #### 5.3 创建TodoService
 
-在 `service` 包中创建 `TodoService.java`：
+在 `service` 包中创建 `TodoService.java`（使用内存存储的简化版本）：
 
 ```java
 package com.zjgsu.todo.service;
@@ -590,84 +586,55 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-/**
- * Todo服务层
- * 使用内存存储，演示RESTful API
- */
 @Service
 public class TodoService {
-    // 使用内存存储
     private final Map<Long, Todo> todos = new ConcurrentHashMap<>();
     private final AtomicLong idCounter = new AtomicLong(1);
     private final UserService userService;
 
     public TodoService(UserService userService) {
         this.userService = userService;
-        // 初始化一些测试数据
-        createTodo(new Todo(null, "学习Spring Boot", "完成Spring Boot基础教程", 1L));
-        createTodo(new Todo(null, "实现RESTful API", "创建用户和Todo的CRUD接口", 1L));
-        createTodo(new Todo(null, "编写文档", "完善API文档", 2L));
+        // 初始化测试数据
+        createTodo(new Todo(null, "学习Spring Boot", "完成基础教程", 1L));
+        createTodo(new Todo(null, "实现RESTful API", "创建CRUD接口", 1L));
     }
 
-    /**
-     * 获取所有Todo
-     */
     public List<Todo> findAll() {
         return new ArrayList<>(todos.values());
     }
 
-    /**
-     * 根据用户ID获取Todo列表
-     */
     public List<Todo> findByUserId(Long userId) {
         return todos.values().stream()
                 .filter(todo -> todo.getUserId().equals(userId))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 根据ID查找Todo
-     */
     public Optional<Todo> findById(Long id) {
         return Optional.ofNullable(todos.get(id));
     }
 
-    /**
-     * 创建Todo
-     */
     public Todo createTodo(Todo todo) {
-        // 验证用户是否存在
         if (todo.getUserId() != null && !userService.existsById(todo.getUserId())) {
             throw new ResourceNotFoundException("User", todo.getUserId());
         }
-
         Long id = idCounter.getAndIncrement();
         todo.setId(id);
         todos.put(id, todo);
         return todo;
     }
 
-    /**
-     * 更新Todo
-     */
     public Todo updateTodo(Long id, Todo todo) {
         if (!todos.containsKey(id)) {
             throw new ResourceNotFoundException("Todo", id);
         }
-
-        // 验证用户是否存在
         if (todo.getUserId() != null && !userService.existsById(todo.getUserId())) {
             throw new ResourceNotFoundException("User", todo.getUserId());
         }
-
         todo.setId(id);
         todos.put(id, todo);
         return todo;
     }
 
-    /**
-     * 删除Todo
-     */
     public boolean deleteTodo(Long id) {
         if (!todos.containsKey(id)) {
             throw new ResourceNotFoundException("Todo", id);
@@ -676,9 +643,6 @@ public class TodoService {
         return true;
     }
 
-    /**
-     * 切换Todo完成状态
-     */
     public Todo toggleComplete(Long id) {
         Todo todo = todos.get(id);
         if (todo == null) {
@@ -689,6 +653,11 @@ public class TodoService {
     }
 }
 ```
+
+**📝 代码说明**：
+- 此版本使用 `ConcurrentHashMap` 进行内存存储
+- 在[第八步](#第八步配置数据库)中，我们会升级为使用JPA和数据库
+- `@Service` 注解让Spring自动管理这个类
 
 ---
 
@@ -1052,9 +1021,388 @@ public class GlobalExceptionHandler {
 
 ---
 
-### 第八步：配置应用
+### 第八步：配置数据库
 
-#### 8.1 配置application.yml
+本步骤将添加数据库支持，实现数据持久化。
+
+#### 8.1 添加数据库依赖
+
+1. 打开 `pom.xml` 文件
+
+2. 在 `<dependencies>` 标签内添加以下依赖：
+
+```xml
+<!-- Spring Data JPA -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+
+<!-- MySQL驱动 -->
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+    <scope>runtime</scope>
+</dependency>
+
+<!-- H2数据库（开发环境） -->
+<dependency>
+    <groupId>com.h2database</groupId>
+    <artifactId>h2</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+3. 点击IDEA右上角的 `M` 图标（Maven）或右键点击 `pom.xml` -> `Maven` -> `Reload Project`
+
+#### 8.2 为实体类添加JPA注解
+
+修改 `User.java`，添加JPA注解：
+
+```java
+package com.zjgsu.todo.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, length = 50)
+    private String username;
+
+    @Column(nullable = false, unique = true, length = 100)
+    private String email;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
+
+    // Getters and Setters...
+}
+```
+
+修改 `Todo.java`：
+
+```java
+package com.zjgsu.todo.model;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "todos")
+public class Todo {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, length = 200)
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(nullable = false)
+    private Boolean completed = false;
+
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
+    // Getters and Setters...
+}
+```
+
+**📝 JPA注解说明**：
+- `@Entity` - 标记为JPA实体类
+- `@Table(name = "users")` - 指定数据库表名
+- `@Id` - 标记主键字段
+- `@GeneratedValue(strategy = IDENTITY)` - 自增主键
+- `@Column` - 配置列属性（长度、非空、唯一等）
+- `@PrePersist` - 在保存前自动执行
+- `@PreUpdate` - 在更新前自动执行
+
+#### 8.3 创建Repository接口
+
+1. 创建 `repository` 包：右键点击 `com/zjgsu/todo` -> `New` -> `Package` -> 输入 `repository`
+
+2. 在 `repository` 包中创建 `UserRepository.java`：
+
+```java
+package com.zjgsu.todo.repository;
+
+import com.zjgsu.todo.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Long> {
+    /**
+     * 根据用户名查找用户
+     */
+    Optional<User> findByUsername(String username);
+
+    /**
+     * 根据邮箱查找用户
+     */
+    Optional<User> findByEmail(String email);
+
+    /**
+     * 检查用户名是否存在
+     */
+    boolean existsByUsername(String username);
+
+    /**
+     * 检查邮箱是否存在
+     */
+    boolean existsByEmail(String email);
+}
+```
+
+3. 在 `repository` 包中创建 `TodoRepository.java`：
+
+```java
+package com.zjgsu.todo.repository;
+
+import com.zjgsu.todo.model.Todo;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface TodoRepository extends JpaRepository<Todo, Long> {
+    /**
+     * 根据用户ID查找所有Todo
+     */
+    List<Todo> findByUserId(Long userId);
+
+    /**
+     * 根据用户ID和完成状态查找Todo
+     */
+    List<Todo> findByUserIdAndCompleted(Long userId, Boolean completed);
+
+    /**
+     * 根据完成状态查找Todo
+     */
+    List<Todo> findByCompleted(Boolean completed);
+
+    /**
+     * 根据标题模糊查询
+     */
+    List<Todo> findByTitleContaining(String keyword);
+}
+```
+
+**📝 Spring Data JPA说明**：
+- 继承 `JpaRepository<Entity, ID>` 即可获得基本的CRUD方法
+- 按照命名规则定义方法，Spring会自动生成SQL：
+  - `findBy...` - 查询
+  - `existsBy...` - 判断是否存在
+  - `countBy...` - 计数
+  - `...And...` - AND条件
+  - `...Or...` - OR条件
+  - `...Containing` - 模糊查询
+
+#### 8.4 修改Service层使用Repository
+
+修改 `UserService.java`，从内存存储改为使用数据库：
+
+```java
+package com.zjgsu.todo.service;
+
+import com.zjgsu.todo.exception.ResourceNotFoundException;
+import com.zjgsu.todo.model.User;
+import com.zjgsu.todo.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class UserService {
+    private final UserRepository userRepository;
+
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @PostConstruct
+    public void init() {
+        // 只在数据库为空时初始化测试数据
+        if (userRepository.count() == 0) {
+            createUser(new User(null, "张三", "zhangsan@example.com"));
+            createUser(new User(null, "李四", "lisi@example.com"));
+        }
+    }
+
+    public List<User> findAll() {
+        return userRepository.findAll();
+    }
+
+    public Optional<User> findById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    @Transactional
+    public User createUser(User user) {
+        // 验证用户名和邮箱唯一性
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new IllegalArgumentException("Username already exists");
+        }
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public User updateUser(Long id, User user) {
+        if (!userRepository.existsById(id)) {
+            throw new ResourceNotFoundException("User", id);
+        }
+        user.setId(id);
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public boolean deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new ResourceNotFoundException("User", id);
+        }
+        userRepository.deleteById(id);
+        return true;
+    }
+
+    public boolean existsById(Long id) {
+        return userRepository.existsById(id);
+    }
+}
+```
+
+同样修改 `TodoService.java`：
+
+```java
+package com.zjgsu.todo.service;
+
+import com.zjgsu.todo.exception.ResourceNotFoundException;
+import com.zjgsu.todo.model.Todo;
+import com.zjgsu.todo.repository.TodoRepository;
+import jakarta.annotation.PostConstruct;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class TodoService {
+    private final TodoRepository todoRepository;
+    private final UserService userService;
+
+    public TodoService(TodoRepository todoRepository, UserService userService) {
+        this.todoRepository = todoRepository;
+        this.userService = userService;
+    }
+
+    @PostConstruct
+    public void init() {
+        // 只在数据库为空时初始化测试数据
+        if (todoRepository.count() == 0) {
+            createTodo(new Todo(null, "学习Spring Boot", "完成Spring Boot基础教程", 1L));
+            createTodo(new Todo(null, "实现RESTful API", "创建用户和Todo的CRUD接口", 1L));
+            createTodo(new Todo(null, "编写文档", "完善API文档", 2L));
+        }
+    }
+
+    public List<Todo> findAll() {
+        return todoRepository.findAll();
+    }
+
+    public List<Todo> findByUserId(Long userId) {
+        return todoRepository.findByUserId(userId);
+    }
+
+    public Optional<Todo> findById(Long id) {
+        return todoRepository.findById(id);
+    }
+
+    @Transactional
+    public Todo createTodo(Todo todo) {
+        if (todo.getUserId() != null && !userService.existsById(todo.getUserId())) {
+            throw new ResourceNotFoundException("User", todo.getUserId());
+        }
+        return todoRepository.save(todo);
+    }
+
+    @Transactional
+    public Todo updateTodo(Long id, Todo todo) {
+        if (!todoRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Todo", id);
+        }
+        if (todo.getUserId() != null && !userService.existsById(todo.getUserId())) {
+            throw new ResourceNotFoundException("User", todo.getUserId());
+        }
+        todo.setId(id);
+        return todoRepository.save(todo);
+    }
+
+    @Transactional
+    public boolean deleteTodo(Long id) {
+        if (!todoRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Todo", id);
+        }
+        todoRepository.deleteById(id);
+        return true;
+    }
+
+    @Transactional
+    public Todo toggleComplete(Long id) {
+        Todo todo = todoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Todo", id));
+        todo.setCompleted(!todo.getCompleted());
+        return todoRepository.save(todo);
+    }
+}
+```
+
+**📝 事务管理说明**：
+- `@Transactional` - 标记需要事务管理的方法
+- 查询操作不需要事务，增删改操作需要
+- Spring会自动管理事务的提交和回滚
+
+#### 8.5 配置数据库连接
+
+1. 删除默认的 `application.properties` 文件
 
 1. 删除默认的 `application.properties` 文件：
    - 右键点击 `src/main/resources/application.properties`
@@ -1074,17 +1422,103 @@ spring:
   application:
     name: todo-api
 
+  # 数据源配置（MySQL）
+  datasource:
+    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    username: todo_user
+    password: todo_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: update  # 自动更新表结构
+    show-sql: true      # 显示SQL语句
+    properties:
+      hibernate:
+        format_sql: true  # 格式化SQL
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
 # 日志配置
 logging:
   level:
     com.zjgsu.todo: INFO
     org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+```
+
+3. 创建 `application-dev.yml`（开发环境配置）：
+
+```yaml
+spring:
+  # H2内存数据库配置
+  datasource:
+    url: jdbc:h2:mem:todo_db
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  # H2控制台
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # JPA配置
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # 每次启动重建表
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+# 日志配置
+logging:
+  level:
+    com.zjgsu.todo: DEBUG
+    org.springframework.web: DEBUG
+```
+
+4. 创建 `application-prod.yml`（生产环境配置）：
+
+```yaml
+spring:
+  # 生产环境使用环境变量配置数据库
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8}
+    username: ${DB_USERNAME:todo_user}
+    password: ${DB_PASSWORD:todo_password}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # 生产环境只验证，不修改表结构
+    show-sql: false       # 关闭SQL日志
+    properties:
+      hibernate:
+        format_sql: false
+
+# 日志配置
+logging:
+  level:
+    com.zjgsu.todo: WARN
+    org.springframework.web: WARN
 ```
 
 **📝 配置说明**：
-- `server.port` 设置应用端口为8080
-- `spring.application.name` 设置应用名称
-- `logging.level` 配置日志级别
+
+**ddl-auto 选项**：
+- `create` - 每次启动创建新表（删除旧表）
+- `create-drop` - 启动时创建，关闭时删除
+- `update` - 更新表结构（推荐开发环境）
+- `validate` - 仅验证表结构（推荐生产环境）
+- `none` - 不做任何操作
+
+**环境切换**：
+- 开发环境：`./mvnw spring-boot:run -Dspring-boot.run.profiles=dev`
+- 生产环境：`./mvnw spring-boot:run -Dspring-boot.run.profiles=prod`
+- 默认环境：`./mvnw spring-boot:run` (使用 application.yml)
 
 ---
 
@@ -1445,17 +1879,184 @@ Web server failed to start. Port 8080 was already in use.
 
 ---
 
+## 数据库配置
+
+项目支持两种数据库环境：
+
+### 开发环境（H2内存数据库）
+
+默认使用H2内存数据库，无需额外配置，启动即用：
+
+```bash
+# 使用开发环境配置启动
+./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+访问H2控制台：http://localhost:8080/h2-console
+
+- **JDBC URL**: `jdbc:h2:mem:todo_db`
+- **用户名**: `sa`
+- **密码**: (留空)
+
+### 生产环境（MySQL数据库）
+
+#### 1. 安装MySQL
+
+根据你的操作系统安装MySQL 8.0+：
+
+- **Windows**: 下载 [MySQL Installer](https://dev.mysql.com/downloads/installer/)
+- **macOS**: `brew install mysql`
+- **Linux (Ubuntu/Debian)**: `sudo apt install mysql-server`
+
+#### 2. 创建数据库和用户
+
+使用项目提供的初始化脚本：
+
+```bash
+# 登录MySQL
+mysql -u root -p
+
+# 执行初始化脚本
+source src/main/resources/db/init.sql
+```
+
+或手动执行以下SQL命令：
+
+```sql
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS todo_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- 创建用户
+CREATE USER IF NOT EXISTS 'todo_user'@'localhost' IDENTIFIED BY 'todo_password';
+
+-- 授权
+GRANT ALL PRIVILEGES ON todo_db.* TO 'todo_user'@'localhost';
+FLUSH PRIVILEGES;
+
+-- 使用数据库
+USE todo_db;
+```
+
+初始化脚本会自动创建表结构并插入测试数据。
+
+#### 3. 配置数据库连接
+
+**方式一：修改配置文件**
+
+编辑 `src/main/resources/application.yml`：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    username: todo_user
+    password: todo_password
+```
+
+**方式二：使用环境变量（推荐生产环境）**
+
+设置以下环境变量：
+
+```bash
+export DB_URL="jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8"
+export DB_USERNAME="todo_user"
+export DB_PASSWORD="todo_password"
+```
+
+然后使用生产配置启动：
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
+```
+
+#### 4. 验证数据库连接
+
+启动应用后，检查日志：
+
+```
+Initialized JPA EntityManagerFactory for persistence unit 'default'
+HikariPool-1 - Starting...
+HikariPool-1 - Start completed.
+```
+
+或使用测试接口：
+
+```bash
+curl http://localhost:8080/api/users
+```
+
+应该能看到预置的测试数据。
+
+### 数据库配置参数说明
+
+| 参数 | 开发环境 | 生产环境 | 说明 |
+|------|----------|----------|------|
+| `spring.jpa.hibernate.ddl-auto` | `create-drop` | `validate` | 开发环境每次启动重建表；生产环境仅验证 |
+| `spring.jpa.show-sql` | `true` | `false` | 开发环境显示SQL；生产环境关闭以提高性能 |
+| `spring.h2.console.enabled` | `true` | `false` | H2控制台仅开发环境启用 |
+| `logging.level` | `DEBUG` | `WARN` | 开发环境详细日志；生产环境警告级别 |
+
+### 常见数据库问题
+
+#### 1. 连接被拒绝
+
+```
+Connection refused: localhost:3306
+```
+
+**解决方法**：
+- 检查MySQL是否运行：`mysql --version` 或 `systemctl status mysql`
+- 启动MySQL服务：`sudo systemctl start mysql`（Linux）或通过服务管理器启动（Windows）
+
+#### 2. 用户认证失败
+
+```
+Access denied for user 'todo_user'@'localhost'
+```
+
+**解决方法**：
+- 检查用户名和密码是否正确
+- 重新创建用户和授权（参考上述SQL命令）
+- MySQL 8.0需要使用 `mysql_native_password` 插件：
+  ```sql
+  ALTER USER 'todo_user'@'localhost' IDENTIFIED WITH mysql_native_password BY 'todo_password';
+  ```
+
+#### 3. 时区错误
+
+```
+The server time zone value 'CST' is unrecognized
+```
+
+**解决方法**：
+在连接URL中添加时区参数：
+```
+jdbc:mysql://localhost:3306/todo_db?serverTimezone=Asia/Shanghai
+```
+
+#### 4. 字符编码问题
+
+如果出现中文乱码，确保：
+- 数据库使用 `utf8mb4` 字符集
+- 连接URL包含 `characterEncoding=utf8`
+- MySQL配置文件（my.cnf）设置：
+  ```
+  [mysqld]
+  character-set-server=utf8mb4
+  collation-server=utf8mb4_unicode_ci
+  ```
+
 ## 项目扩展建议
 
 完成基础项目后，可以尝试以下扩展：
 
 1. **添加数据验证** - 使用 `@Valid` 和验证注解
 2. **添加Swagger文档** - 自动生成API文档
-3. **集成数据库** - 使用Spring Data JPA
-4. **添加分页** - 实现分页查询
-5. **添加日志** - 使用SLF4J记录日志
-6. **单元测试** - 编写Controller和Service的测试
-7. **添加认证** - 使用Spring Security
+3. **添加分页** - 实现分页查询
+4. **添加日志** - 使用SLF4J记录日志
+5. **单元测试** - 编写Controller和Service的测试
+6. **添加认证** - 使用Spring Security
+7. **数据库迁移** - 使用Flyway或Liquibase管理数据库版本
 
 ---
 
@@ -1469,6 +2070,9 @@ Web server failed to start. Port 8080 was already in use.
 - ✅ HTTP方法和状态码的正确使用
 - ✅ 统一响应格式和异常处理
 - ✅ 使用IntelliJ IDEA开发Spring Boot应用
+- ✅ JPA/Hibernate实现数据持久化
+- ✅ MySQL数据库集成与配置
+- ✅ 多环境配置管理（开发/生产）
 
 这是一个很好的起点，继续学习并实践，你会成为一名优秀的后端开发工程师！
 
