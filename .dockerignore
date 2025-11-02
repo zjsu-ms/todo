@@ -1,0 +1,12 @@
+# Maven
+.target/
+target/
+.mvn/
+**/node_modules/**
+**/.DS_Store
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+*.log

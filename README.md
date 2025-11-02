@@ -51,6 +51,65 @@
 - **MySQL** 8.0+ (生产环境)
 - **H2 Database** (开发环境)
 
+## 使用 Docker Compose 运行（推荐）
+
+无需本地安装JDK/MySQL，一条命令运行完整环境：
+
+1) 确保已安装 Docker 与 Docker Compose（Docker Desktop 或 docker cli）
+
+2) 在项目根目录执行：
+
+```bash
+# 构建并启动（首次运行会下载镜像并编译Jar）
+docker compose up -d --build
+
+# 查看服务状态
+docker compose ps
+
+# 查看应用日志
+docker compose logs -f app
+```
+
+3) 访问接口
+
+- 应用地址：http://localhost:8080
+- 示例：`GET http://localhost:8080/api/users`
+
+4) 数据持久化与初始化
+
+- MySQL 使用命名卷 `mysql_data` 持久化数据
+- 首次启动会自动执行 `src/main/resources/db/init.sql` 初始化库表与示例数据
+
+5) 关闭与清理
+
+```bash
+# 停止
+docker compose down
+
+# 停止并清理数据卷（会删除数据库数据）
+docker compose down -v
+```
+
+6) 常见问题
+
+- 端口被占用：修改 `docker-compose.yml` 中映射端口（8080、3306）
+- 首次启动 app 失败：可能是 MySQL 尚未就绪，Compose 已配置健康检查与依赖，稍等片刻或继续查看日志
+- 使用自定义数据库账号/密码：在 `docker-compose.yml` 中修改 `MYSQL_USER`/`MYSQL_PASSWORD`，同时更新 `app` 服务中的 `DB_USERNAME`/`DB_PASSWORD`
+
+环境变量说明（app 服务）：
+
+- `SPRING_PROFILES_ACTIVE=prod`：使用 `application-prod.yml`
+- `DB_URL=jdbc:mysql://db:3306/todo_db?...`：连接 Compose 网络内的 `db` 服务
+- `DB_USERNAME`、`DB_PASSWORD`：数据库凭据
+
+如需仅构建镜像（不运行）：
+
+```bash
+docker build -t zjgsu/todo:latest .
+```
+
+镜像基于 Java 24（Temurin）；如你的环境仅支持 Java 17，可将 `pom.xml` 的 `<java.version>` 与 `Dockerfile` 的基础镜像同步调整。
+
 ## 环境准备
 
 在开始之前，请确保你的电脑上已安装以下软件：
