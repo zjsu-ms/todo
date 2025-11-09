@@ -6,6 +6,8 @@
 
 - [项目说明](#项目说明)
 - [技术栈](#技术栈)
+- [使用 Docker Compose 运行（推荐）](#使用-docker-compose-运行推荐)
+- [Docker 使用与国内镜像加速（中国大陆）](#docker-使用与国内镜像加速中国大陆)
 - [环境准备](#环境准备)
 - [数据库配置](#数据库配置)
   - [开发环境（H2内存数据库）](#开发环境h2内存数据库)
@@ -53,14 +55,26 @@
 
 ## 使用 Docker Compose 运行（推荐）
 
-无需本地安装JDK/MySQL，一条命令运行完整环境：
+无需本地安装 MySQL，使用 Docker 运行完整环境：
 
-1) 确保已安装 Docker 与 Docker Compose（Docker Desktop 或 docker cli）
+1) 确保已安装以下软件：
+   - JDK 17+ 和 Maven（或使用项目自带的 `./mvnw`）
+   - Docker 与 Docker Compose（Docker Desktop 或 docker cli）
 
-2) 在项目根目录执行：
+2) **先在本地构建 JAR 包**：
 
 ```bash
-# 构建并启动（首次运行会下载镜像并编译Jar）
+# 使用 Maven Wrapper（推荐）
+./mvnw clean package -DskipTests
+
+# 或使用本地 Maven
+mvn clean package -DskipTests
+```
+
+3) 在项目根目录执行 Docker Compose：
+
+```bash
+# 构建镜像并启动服务
 docker compose up -d --build
 
 # 查看服务状态
@@ -92,6 +106,7 @@ docker compose down -v
 
 6) 常见问题
 
+- **JAR 文件未找到**：确保先执行 `./mvnw clean package -DskipTests` 构建 JAR
 - 端口被占用：修改 `docker-compose.yml` 中映射端口（8080、3306）
 - 首次启动 app 失败：可能是 MySQL 尚未就绪，Compose 已配置健康检查与依赖，稍等片刻或继续查看日志
 - 使用自定义数据库账号/密码：在 `docker-compose.yml` 中修改 `MYSQL_USER`/`MYSQL_PASSWORD`，同时更新 `app` 服务中的 `DB_USERNAME`/`DB_PASSWORD`
@@ -102,13 +117,166 @@ docker compose down -v
 - `DB_URL=jdbc:mysql://db:3306/todo_db?...`：连接 Compose 网络内的 `db` 服务
 - `DB_USERNAME`、`DB_PASSWORD`：数据库凭据
 
-如需仅构建镜像（不运行）：
+### 仅构建 Docker 镜像（不使用 Compose）
+
+如需单独构建镜像：
 
 ```bash
+# 1. 先构建 JAR
+./mvnw clean package -DskipTests
+
+# 2. 构建 Docker 镜像
 docker build -t zjgsu/todo:latest .
+
+# 3. 运行容器（需要自行配置数据库连接）
+docker run -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  -e DB_URL=jdbc:mysql://host.docker.internal:3306/todo_db \
+  -e DB_USERNAME=todo_user \
+  -e DB_PASSWORD=todo_password \
+  zjgsu/todo:latest
 ```
 
-镜像基于 Java 24（Temurin）；如你的环境仅支持 Java 17，可将 `pom.xml` 的 `<java.version>` 与 `Dockerfile` 的基础镜像同步调整。
+镜像基于 Java 25（Temurin）JRE；如你的环境仅支持 Java 17，可将 `pom.xml` 的 `<java.version>` 与 `Dockerfile` 的基础镜像同步调整。
+
+---
+
+## Docker 使用与国内镜像加速（中国大陆）
+
+在中国大陆网络环境下，直接从 Docker Hub 拉取镜像常遇到超时/限速。下面提供三种可靠方案，任选其一或组合使用。
+
+### 1) 配置 Docker 镜像加速器（推荐）
+
+使用云厂商提供的官方“镜像加速器”（与账号绑定，稳定性最好）：
+
+- 阿里云 ACR：控制台 -> 容器镜像服务 -> 镜像工具 -> 镜像加速器（复制“专属加速器地址”）
+- 腾讯云 TCR：控制台 -> TCR -> 管理中心 -> 镜像加速域名
+- 华为云 SWR：控制台 -> SWR -> 工具 -> 镜像加速
+
+将获取到的加速器地址写入 Docker 守护进程配置 `/etc/docker/daemon.json`（如文件不存在则新建）：
+
+```json
+{
+    "registry-mirrors": [
+        "https://<你的阿里云加速器ID>.mirror.aliyuncs.com",
+        "https://mirror.ccs.tencentyun.com",
+        "https://docker.mirrors.sjtug.sjtu.edu.cn"
+    ]
+}
+```
+
+然后重启 Docker 服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+验证是否生效：
+
+```bash
+docker info | grep -i "Registry Mirrors" -A 3
+```
+
+生效后，直接执行项目根目录的：
+
+```bash
+docker compose up -d --build
+```
+
+即可自动拉取和构建本项目所需镜像。
+
+提示：近年来高校公共镜像（如 USTC/TUNA/BFSU）对 Docker Hub 的镜像服务多已停止或不稳定，建议优先使用云厂商个人加速器。
+
+### 2) 使用 DaoCloud Hub 直连 Docker Hub（无需全局配置）
+
+如果你只想在本项目中替换单个镜像源，可将镜像名改为 `m.daocloud.io/docker.io/<原镜像>` 的形式。例如：
+
+- `mysql:8.4` → `m.daocloud.io/docker.io/mysql:8.4`
+- `eclipse-temurin:25-jre` → `m.daocloud.io/docker.io/eclipse-temurin:25-jre`
+- `hello-world` → `m.daocloud.io/docker.io/hello-world`
+
+用法示例：
+
+- `docker-compose.yml` 中的 `db.image` 可替换为 `m.daocloud.io/docker.io/mysql:8.4`
+- `Dockerfile` 中的 `FROM` 可替换为上述 DaoCloud 前缀的镜像名
+
+如果不想改动现有文件，可新建一个 `docker-compose.override.yml` 放在项目根目录（Compose 会自动合并）：
+
+```yaml
+services:
+    db:
+        image: m.daocloud.io/docker.io/mysql:8.4
+```
+
+然后照常运行：
+
+```bash
+docker compose up -d --build
+```
+
+### 3) 设置网络代理（可选）
+
+如果你所在的网络有 HTTP/HTTPS 代理，可以为 Docker 守护进程或客户端配置代理，以提升下载成功率：
+
+- 客户端级别（`~/.docker/config.json`）：
+
+```json
+{
+    "proxies": {
+        "default": {
+            "httpProxy": "http://127.0.0.1:7890",
+            "httpsProxy": "http://127.0.0.1:7890",
+            "noProxy": "localhost,127.0.0.1"
+        }
+    }
+}
+```
+
+- 守护进程级别（systemd）：创建 `/etc/systemd/system/docker.service.d/proxy.conf`，内容示例：
+
+```ini
+[Service]
+Environment="HTTP_PROXY=http://127.0.0.1:7890" "HTTPS_PROXY=http://127.0.0.1:7890" "NO_PROXY=localhost,127.0.0.1"
+```
+
+应用并重启：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart docker
+```
+
+### 本项目涉及的镜像一览
+
+- 运行阶段：`eclipse-temurin:25-jre`
+- 数据库：`mysql:8.4`
+
+**注意**：现在项目改为本地构建，不再需要 Maven 镜像。在运行 `docker compose up` 前，需先执行 `./mvnw clean package -DskipTests` 构建 JAR。
+
+若需要手动预拉镜像（先下载再构建），可执行：
+
+```bash
+docker pull eclipse-temurin:25-jre
+docker pull mysql:8.4
+```
+
+国内手动下载并重命名（DaoCloud 源）：
+
+```bash
+# 1) 从 DaoCloud 拉取镜像到本地
+docker pull m.daocloud.io/docker.io/eclipse-temurin:25-jre
+docker pull m.daocloud.io/docker.io/mysql:8.4
+
+# 2) 打上官方镜像名的 tag，供 Dockerfile/Compose 按原名使用
+docker tag m.daocloud.io/docker.io/eclipse-temurin:25-jre eclipse-temurin:25-jre
+docker tag m.daocloud.io/docker.io/mysql:8.4 mysql:8.4
+
+# 3) 可选：删除带前缀的镜像（节省空间）
+docker rmi m.daocloud.io/docker.io/eclipse-temurin:25-jre \
+           m.daocloud.io/docker.io/mysql:8.4 || true
+```
+
 
 ## 环境准备
 
@@ -1483,7 +1651,7 @@ spring:
 
   # 数据源配置（MySQL）
   datasource:
-    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8mb4&useUnicode=true
     username: todo_user
     password: todo_password
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -1546,7 +1714,7 @@ logging:
 spring:
   # 生产环境使用环境变量配置数据库
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8mb4&useUnicode=true}
     username: ${DB_USERNAME:todo_user}
     password: ${DB_PASSWORD:todo_password}
 
@@ -2007,7 +2175,7 @@ USE todo_db;
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8
+    url: jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8mb4&useUnicode=true
     username: todo_user
     password: todo_password
 ```
@@ -2017,7 +2185,7 @@ spring:
 设置以下环境变量：
 
 ```bash
-export DB_URL="jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8"
+export DB_URL="jdbc:mysql://localhost:3306/todo_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8mb4&useUnicode=true"
 export DB_USERNAME="todo_user"
 export DB_PASSWORD="todo_password"
 ```
@@ -2096,14 +2264,15 @@ jdbc:mysql://localhost:3306/todo_db?serverTimezone=Asia/Shanghai
 #### 4. 字符编码问题
 
 如果出现中文乱码，确保：
-- 数据库使用 `utf8mb4` 字符集
-- 连接URL包含 `characterEncoding=utf8`
-- MySQL配置文件（my.cnf）设置：
+- 数据库使用 `utf8mb4` 字符集（支持完整 Unicode，包括 emoji）
+- 连接URL包含 `characterEncoding=utf8mb4&useUnicode=true`
+- MySQL配置文件（my.cnf）或启动参数设置：
   ```
   [mysqld]
   character-set-server=utf8mb4
   collation-server=utf8mb4_unicode_ci
   ```
+- Docker Compose 中已配置：`--character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci`
 
 ## 项目扩展建议
 
