@@ -28,6 +28,7 @@
 - [完整API文档](#完整api文档)
 - [学习要点](#学习要点)
 - [项目扩展建议](#项目扩展建议)
+- [CI/CD - 自动发布 Docker 镜像](#cicd---自动发布-docker-镜像)
 
 ---
 
@@ -2285,6 +2286,109 @@ jdbc:mysql://localhost:3306/todo_db?serverTimezone=Asia/Shanghai
 5. **单元测试** - 编写Controller和Service的测试
 6. **添加认证** - 使用Spring Security
 7. **数据库迁移** - 使用Flyway或Liquibase管理数据库版本
+
+---
+
+## CI/CD - 自动发布 Docker 镜像
+
+本项目配置了 GitHub Actions 工作流，可以在发布新版本时自动构建并发布 Docker 镜像到 GitHub Container Registry (ghcr.io)。
+
+### 发布新版本的步骤
+
+1. **更新版本号**
+   
+   编辑 `pom.xml`，更新版本号：
+   ```xml
+   <version>1.2.0</version>
+   ```
+
+2. **提交并推送代码**
+   ```bash
+   git add .
+   git commit -m "chore: bump version to 1.2.0"
+   git push origin main
+   ```
+
+3. **创建并推送 Git 标签**
+   ```bash
+   git tag v1.2.0
+   git push origin v1.2.0
+   ```
+
+4. **在 GitHub 上创建 Release**
+   - 访问仓库的 Releases 页面
+   - 点击 "Create a new release"
+   - 选择刚才创建的标签 `v1.2.0`
+   - 填写发布说明
+   - 点击 "Publish release"
+
+5. **自动构建和发布**
+   
+   GitHub Actions 会自动：
+   - 使用 Maven 构建 JAR 包
+   - 构建 Docker 镜像
+   - 推送镜像到 `ghcr.io/zjsu-ms/todo`
+   - 自动生成多个标签：
+     - `ghcr.io/zjsu-ms/todo:1.2.0`
+     - `ghcr.io/zjsu-ms/todo:1.2`
+     - `ghcr.io/zjsu-ms/todo:1`
+     - `ghcr.io/zjsu-ms/todo:latest`
+
+### 使用发布的镜像
+
+从 GitHub Container Registry 拉取镜像：
+
+```bash
+# 拉取最新版本
+docker pull ghcr.io/zjsu-ms/todo:latest
+
+# 拉取特定版本
+docker pull ghcr.io/zjsu-ms/todo:1.2.0
+```
+
+在 `docker-compose.yml` 中使用发布的镜像：
+
+```yaml
+services:
+  app:
+    image: ghcr.io/zjsu-ms/todo:1.2.0
+    # 或使用 latest 标签
+    # image: ghcr.io/zjsu-ms/todo:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://db:3306/todo_db?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      DB_USERNAME: todo
+      DB_PASSWORD: todo_pass
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+```
+
+### 国内用户拉取镜像加速
+
+如果从 GitHub Container Registry 拉取镜像较慢，可以配置镜像代理或使用以下方法：
+
+```bash
+# 通过代理拉取
+docker pull ghcr.io/zjsu-ms/todo:latest
+
+# 重新打标签为本地名称
+docker tag ghcr.io/zjsu-ms/todo:latest todo-app:latest
+```
+
+### 工作流配置
+
+工作流文件位于 `.github/workflows/release.yml`，触发条件：
+- 推送标签（格式：`v*.*.*`，如 `v1.2.0`）
+- 发布 GitHub Release
+
+工作流权限：
+- 自动使用 `GITHUB_TOKEN`，无需额外配置
+- 需要 `contents: read` 和 `packages: write` 权限
 
 ---
 
