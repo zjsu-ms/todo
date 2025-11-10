@@ -3,10 +3,11 @@
 ![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
 ![Java](https://img.shields.io/badge/Java-25-orange.svg)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)
-[![Docker Image](https://ghcr-badge.egpl.dev/zjsu-ms/todo/latest_tag?trim=major&label=ghcr.io)](https://github.com/zjsu-ms/todo/pkgs/container/todo)
-[![Docker Image Size](https://ghcr-badge.egpl.dev/zjsu-ms/todo/size?tag=latest)](https://github.com/zjsu-ms/todo/pkgs/container/todo)
+![Docker](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)
 
 一个简洁的Spring Boot项目，用于演示RESTful API的设计和实现。本教程将手把手教你从零开始构建这个项目。
+
+> **注意**: 如果 Docker badge 显示 "invalid"，请按照下面的说明将 GitHub Package 设置为公开。
 
 ## 📋 目录
 
@@ -2340,9 +2341,19 @@ jdbc:mysql://localhost:3306/todo_db?serverTimezone=Asia/Shanghai
      - `ghcr.io/zjsu-ms/todo:1`
      - `ghcr.io/zjsu-ms/todo:latest`
 
+6. **设置包为公开（重要）**
+   
+   首次发布后，包默认是私有的。需要手动设置为公开：
+   - 访问 https://github.com/zjsu-ms/todo/pkgs/container/todo
+   - 点击右侧的 "Package settings"
+   - 滚动到页面底部 "Danger Zone"
+   - 点击 "Change visibility"
+   - 选择 "Public"
+   - 确认更改
+
 ### 使用发布的镜像
 
-从 GitHub Container Registry 拉取镜像：
+从 GitHub Container Registry 拉取镜像（需要先将包设置为公开）：
 
 ```bash
 # 拉取最新版本
