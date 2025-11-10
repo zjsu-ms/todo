@@ -1,5 +1,11 @@
 # Todo RESTful API Demo - 从零开始教程
 
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
+![Java](https://img.shields.io/badge/Java-25-orange.svg)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.6-brightgreen.svg)
+[![Docker Image](https://ghcr-badge.egpl.dev/zjsu-ms/todo/latest_tag?trim=major&label=ghcr.io)](https://github.com/zjsu-ms/todo/pkgs/container/todo)
+[![Docker Image Size](https://ghcr-badge.egpl.dev/zjsu-ms/todo/size?tag=latest)](https://github.com/zjsu-ms/todo/pkgs/container/todo)
+
 一个简洁的Spring Boot项目，用于演示RESTful API的设计和实现。本教程将手把手教你从零开始构建这个项目。
 
 ## 📋 目录
