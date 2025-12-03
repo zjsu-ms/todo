@@ -44,12 +44,16 @@
 
 ## 技术栈
 
-- **Spring Boot** 3.5.6
-- **Java** 25（或Java 17+）
-- **Maven** 3.8+
-- **IntelliJ IDEA** 2024+（推荐使用Community或Ultimate版本）
-- **MySQL** 8.0+ (生产环境)
-- **H2 Database** (开发环境)
+本项目使用的技术栈版本信息请参考：[课程技术栈版本说明](../../README.md#课程技术栈版本)
+
+核心技术：
+
+- **Spring Boot** - Web应用框架
+- **Java** - 主要编程语言
+- **Maven** - 项目构建工具
+- **IntelliJ IDEA** - 推荐的集成开发环境
+- **MySQL** - 生产环境数据库
+- **H2 Database** - 开发环境内存数据库
 
 ## 环境准备
 
